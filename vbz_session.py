@@ -142,14 +142,15 @@ class SessionRunner(threading.Thread):
             audio_thr.start()
 
             mode = self.spec.mode
+            completed_naturally = False
             if mode == 'reanchor':
-                self._run_reanchor(writer)
+                completed_naturally = self._run_reanchor(writer)
             elif mode == 'contrast':
-                self._run_contrast(writer)
+                completed_naturally = self._run_contrast(writer)
             elif mode == 'context':
-                self._run_context(writer)
+                completed_naturally = self._run_context(writer)
             elif mode == 'overspeed':
-                self._run_overspeed(writer)
+                completed_naturally = self._run_overspeed(writer)
             else:
                 self.update_ui_cb("Unknown mode")
 
@@ -158,11 +159,18 @@ class SessionRunner(threading.Thread):
             except queue.Full:
                 pass  # Audio thread will exit naturally
 
+            # Notify completion if the drill ended naturally (not stopped by user)
+            if completed_naturally and not self.stop_flag.is_set():
+                self.update_ui_cb("SESSION_COMPLETE")
+
     # ---- Drill runners are thin wrappers delegated to synth/drill ----
     def _run_reanchor(self, writer):
         """Run the re-anchor drill loop, alternating slow/fast blocks.
 
         The method logs block events and pushes synthesized audio into the queue.
+
+        Returns:
+            True if completed naturally, False if stopped early.
         """
         from vbz_drill import build_pair_sequences
         a, b = self.spec.pair[0].upper(), self.spec.pair[1].upper()
@@ -174,13 +182,18 @@ class SessionRunner(threading.Thread):
             syn = self._make_synth(wpm=self.spec.low_wpm)
             self._enqueue_audio(syn.string_audio(pattern))
             if self.stop_flag.is_set():
-                break
+                return False
             writer.writerow([time.time(), self.spec.mode, a+b, "block", f"{self.spec.high_wpm}wpm"])
             syn = self._make_synth(wpm=self.spec.high_wpm)
             self._enqueue_audio(syn.string_audio(pattern))
+        return time.time() >= t_end  # True if we completed the full duration
 
     def _run_contrast(self, writer):
-        """Run the contrast drill: play short dense A/B lines for copying."""
+        """Run the contrast drill: play short dense A/B lines for copying.
+
+        Returns:
+            True if completed naturally, False if stopped early.
+        """
         from vbz_drill import build_pair_sequences
         a, b = self.spec.pair[0].upper(), self.spec.pair[1].upper()
         lines = build_pair_sequences((a, b), lines=6)
@@ -190,15 +203,20 @@ class SessionRunner(threading.Thread):
         for _ in range(4):
             for line in lines:
                 if self.stop_flag.is_set():
-                    break
+                    return False
                 writer.writerow([time.time(), self.spec.mode, a+b, "line", line])
                 self._enqueue_audio(syn.string_audio(line))
                 self._enqueue_audio(syn.string_audio("   "))
             if self.stop_flag.is_set():
-                break
+                return False
+        return True  # Completed all lines
 
     def _run_context(self, writer):
-        """Run the context drill: play call-like context lines and record ground truth."""
+        """Run the context drill: play call-like context lines and record ground truth.
+
+        Returns:
+            True if completed naturally, False if stopped early.
+        """
         from vbz_drill import build_context_lines
         a, b = self.spec.pair[0].upper(), self.spec.pair[1].upper()
         lines = build_context_lines((a, b), lines=6)
@@ -208,17 +226,22 @@ class SessionRunner(threading.Thread):
         for _ in range(4):
             for line in lines:
                 if self.stop_flag.is_set():
-                    break
+                    return False
                 with self._sent_lines_lock:
                     self.sent_lines.append(line)
                 writer.writerow([time.time(), self.spec.mode, a+b, "ctx", line])
                 self._enqueue_audio(syn.string_audio(line))
                 self._enqueue_audio(syn.string_audio("   "))
             if self.stop_flag.is_set():
-                break
+                return False
+        return True  # Completed all lines
 
     def _run_overspeed(self, writer):
-        """Run the overspeed drill: continuous short, high-WPM bursts."""
+        """Run the overspeed drill: continuous short, high-WPM bursts.
+
+        Returns:
+            True if completed naturally, False if stopped early.
+        """
         from vbz_drill import build_pair_sequences
         a, b = self.spec.pair[0].upper(), self.spec.pair[1].upper()
         syn = self._make_synth(wpm=self.spec.overspeed_wpm, stereo=False)
@@ -234,3 +257,4 @@ class SessionRunner(threading.Thread):
             self._enqueue_audio(syn.string_audio(line))
             self._enqueue_audio(syn.string_audio("   "))
             i += 1
+        return time.time() >= t_end  # True if we completed the full duration
