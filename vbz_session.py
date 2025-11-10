@@ -168,24 +168,69 @@ class SessionRunner(threading.Thread):
         """Run the re-anchor drill loop, alternating slow/fast blocks.
 
         The method logs block events and pushes synthesized audio into the queue.
+        The timing_balance parameter controls the ratio between equal character count
+        and equal time duration:
+          0.0 = Equal character count (current behavior)
+          1.0 = Equal time duration
+          0.5 = Balanced mix
 
         Returns:
             True if completed naturally, False if stopped early.
         """
         from vbz_drill import build_pair_sequences
         a, b = self.spec.pair[0].upper(), self.spec.pair[1].upper()
-        pattern = f"{a}{b}" * 8
+
+        # Calculate character counts based on timing balance
+        # For equal characters: both get 16 chars (AB * 8)
+        # For equal time: scale character count inversely with speed
+        base_char_count = 16  # "AB" * 8 = 16 characters
+
+        balance = self.spec.timing_balance
+        low_wpm = self.spec.low_wpm
+        high_wpm = self.spec.high_wpm
+
+        # Calculate repetitions for each speed
+        # At balance=0: both get same char count (8 reps each)
+        # At balance=1: adjust reps to equalize time
+        if balance == 0.0:
+            # Equal characters
+            low_reps = 8
+            high_reps = 8
+        else:
+            # For equal time: time = chars / wpm
+            # We want: low_chars / low_wpm = high_chars / high_wpm
+            # So: low_chars / high_chars = low_wpm / high_wpm
+
+            # At balance=0.0: char_ratio = 1.0 (equal chars)
+            # At balance=1.0: char_ratio = low_wpm / high_wpm (equal time)
+            equal_time_ratio = low_wpm / high_wpm
+            char_ratio = 1.0 + balance * (equal_time_ratio - 1.0)
+
+            # Distribute 16 total reps according to char_ratio
+            # low_reps / high_reps = char_ratio
+            # low_reps + high_reps = 16
+            # Solving: low_reps = 16 * char_ratio / (1 + char_ratio)
+            total_reps = 16
+            low_reps = max(1, round(total_reps * char_ratio / (1.0 + char_ratio)))
+            high_reps = max(1, total_reps - low_reps)
+
+        low_pattern = f"{a}{b}" * low_reps
+        high_pattern = f"{a}{b}" * high_reps
+
         t_end = time.time() + DRILL_DURATION_SECONDS
         self.update_ui_cb("Re-anchor mode:\nListen (or send) alternating A/B at slow↔fast speeds. Focus on FEEL of rhythm (no copying).")
+
         while not self.stop_flag.is_set() and time.time() < t_end:
-            writer.writerow([time.time(), self.spec.mode, a+b, "block", f"{self.spec.low_wpm}wpm"])
-            syn = self._make_synth(wpm=self.spec.low_wpm)
-            self._enqueue_audio(syn.string_audio(pattern))
+            writer.writerow([time.time(), self.spec.mode, a+b, "block", f"{low_wpm}wpm_{low_reps*2}chars"])
+            syn = self._make_synth(wpm=low_wpm)
+            self._enqueue_audio(syn.string_audio(low_pattern))
             if self.stop_flag.is_set():
                 return False
-            writer.writerow([time.time(), self.spec.mode, a+b, "block", f"{self.spec.high_wpm}wpm"])
-            syn = self._make_synth(wpm=self.spec.high_wpm)
-            self._enqueue_audio(syn.string_audio(pattern))
+
+            writer.writerow([time.time(), self.spec.mode, a+b, "block", f"{high_wpm}wpm_{high_reps*2}chars"])
+            syn = self._make_synth(wpm=high_wpm)
+            self._enqueue_audio(syn.string_audio(high_pattern))
+
         return time.time() >= t_end  # True if we completed the full duration
 
     def _run_contrast(self, writer):

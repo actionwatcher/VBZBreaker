@@ -75,6 +75,7 @@ class ReanchorTab(DrillTab):
         self.sep_pct = tk.DoubleVar(value=1.0)
         self.low_wpm = tk.DoubleVar(value=12.0)
         self.high_wpm = tk.DoubleVar(value=36.0)
+        self.timing_balance = tk.DoubleVar(value=0.0)  # 0=equal chars, 1=equal time
 
         self._build_ui()
 
@@ -137,6 +138,48 @@ class ReanchorTab(DrillTab):
         ttk.Label(speed_frame, text="High WPM:").grid(row=0, column=2, sticky="e", padx=4, pady=4)
         ttk.Spinbox(speed_frame, from_=20, to=50, increment=1, textvariable=self.high_wpm, width=6).grid(row=0, column=3, padx=4, pady=4)
 
+        # Timing balance control
+        timing_frame = ttk.LabelFrame(self, text="Timing Balance")
+        timing_frame.pack(fill="x", padx=8, pady=4)
+
+        ttk.Label(timing_frame, text="Balance:").grid(row=0, column=0, sticky="w", padx=4, pady=4)
+
+        timing_slider = ttk.Scale(timing_frame, from_=0.0, to=1.0, orient="horizontal",
+                                   variable=self.timing_balance, length=300)
+        timing_slider.grid(row=0, column=1, padx=4, pady=4, sticky="ew")
+        timing_frame.columnconfigure(1, weight=1)
+
+        # Add labels for the slider positions
+        labels_frame = ttk.Frame(timing_frame)
+        labels_frame.grid(row=1, column=1, sticky="ew", padx=4)
+
+        ttk.Label(labels_frame, text="Equal Characters", font=('', 8)).pack(side="left")
+        ttk.Label(labels_frame, text="Balanced", font=('', 8)).pack(side="left", expand=True)
+        ttk.Label(labels_frame, text="Equal Time", font=('', 8)).pack(side="right")
+
+        # Snap timing slider to 5 positions: 0.0, 0.25, 0.5, 0.75, 1.0
+        def snap_timing(*_):
+            v = self.timing_balance.get()
+            # Snap to 5 positions: 0.0, 0.25, 0.5, 0.75, 1.0
+            if v < 0.125:
+                snapped = 0.0
+            elif v < 0.375:
+                snapped = 0.25
+            elif v < 0.625:
+                snapped = 0.5
+            elif v < 0.875:
+                snapped = 0.75
+            else:
+                snapped = 1.0
+            self.timing_balance.set(snapped)
+        self.timing_balance.trace_add("write", snap_timing)
+
+        # Explanation label
+        explain_frame = ttk.Frame(timing_frame)
+        explain_frame.grid(row=2, column=1, sticky="ew", padx=4, pady=(0, 4))
+        ttk.Label(explain_frame, text="← Same character count at each speed | Same duration at each speed →",
+                  font=('', 8), foreground='gray').pack()
+
         # Control buttons
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill="x", padx=8, pady=8)
@@ -175,7 +218,8 @@ class ReanchorTab(DrillTab):
             stereo=self.stereo.get(),
             pan_strength=self.sep_pct.get(),
             low_wpm=self.low_wpm.get(),
-            high_wpm=self.high_wpm.get()
+            high_wpm=self.high_wpm.get(),
+            timing_balance=self.timing_balance.get()
         )
 
     def on_session_start(self):
