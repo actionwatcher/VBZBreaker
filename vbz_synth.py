@@ -9,6 +9,9 @@ import random
 import numpy as np
 from vbz_utils import DEFAULT_SAMPLE_RATE, DEFAULT_TONE_HZ, DEFAULT_WPM, MORSE_MAP, dit_seconds, env_ramp
 
+# Audio envelope constants
+RAMP_DURATION_SECONDS = 0.005
+
 
 @dataclass
 class SynthConfig:
@@ -102,7 +105,7 @@ class MorseSynth:
         t = np.arange(n, dtype=np.float32) / sr
         sig = np.sin(2 * np.pi * freq * t).astype(np.float32)
 
-        ramp_samps = max(1, int(0.005 * sr))
+        ramp_samps = max(1, int(RAMP_DURATION_SECONDS * sr))
         ramp = env_ramp(ramp_samps)
         sig[:ramp_samps] *= ramp
         sig[-ramp_samps:] *= ramp[::-1]

@@ -6,12 +6,31 @@ audio/synth logic in vbz_session and vbz_synth.
 """
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
-import os, time, csv
+import os, time, csv, sys
 from typing import Optional
 
 from vbz_drill import DrillSpec
 from vbz_session import SessionRunner
 from vbz_utils import MORSE_MAP, norm_text, levenshtein
+
+
+def get_default_log_dir() -> str:
+    """Get platform-appropriate default log directory.
+
+    Returns:
+        Path to the default log directory based on the platform.
+    """
+    if sys.platform == 'win32':
+        # Windows: Use AppData\Local
+        base = os.environ.get('LOCALAPPDATA', os.path.expanduser('~'))
+        return os.path.join(base, 'VBZBreaker', 'logs')
+    elif sys.platform == 'darwin':
+        # macOS: Use ~/Library/Application Support
+        return os.path.join(os.path.expanduser('~'), 'Library', 'Application Support', 'VBZBreaker', 'logs')
+    else:
+        # Linux/Unix: Use XDG_DATA_HOME or ~/.local/share
+        xdg_data = os.environ.get('XDG_DATA_HOME', os.path.join(os.path.expanduser('~'), '.local', 'share'))
+        return os.path.join(xdg_data, 'vbzbreaker', 'logs')
 
 
 class App(tk.Tk):
@@ -25,6 +44,9 @@ class App(tk.Tk):
         self.title("VBZBreaker")
         self.geometry("1040x720")
         self.resizable(True, True)
+
+        # Set up window close handler to clean up running sessions
+        self.protocol("WM_DELETE_WINDOW", self._on_closing)
 
         # Bindable UI variables
         self.active_pair = tk.StringVar(value="H,5")
@@ -41,7 +63,7 @@ class App(tk.Tk):
         self.block_seconds = tk.DoubleVar(value=12.0)
         self.overspeed_wpm = tk.DoubleVar(value=30.0)
 
-        self.log_dir = tk.StringVar(value=os.path.join(os.path.expanduser("~"), "cwpb_logs"))
+        self.log_dir = tk.StringVar(value=get_default_log_dir())
         self.status = tk.StringVar(value="Welcome to VBZBreaker")
         self.runner: Optional[SessionRunner] = None
 
@@ -71,7 +93,7 @@ class App(tk.Tk):
         ttk.Button(top, text="Start", command=self.start_session).grid(row=0, column=8, padx=8)
         ttk.Button(top, text="Stop", command=self.stop_session).grid(row=0, column=9, padx=4)
 
-        # Options frame (abbreviated; rest follows original layout)
+        # Options frame
         opt = ttk.LabelFrame(frm, text="Options")
         opt.pack(fill="x", padx=4, pady=4)
         ttk.Checkbutton(opt, text="Stereo L/R (reanchor/contrast only)", variable=self.stereo).grid(row=0,column=0,sticky="w",padx=6)
@@ -81,6 +103,29 @@ class App(tk.Tk):
         sep.grid(row=0, column=2, padx=4, sticky="ew")
         opt.columnconfigure(2, weight=1)
         ttk.Label(opt, text="0=mono — 1=fully split (snap 0.25)").grid(row=0, column=3, sticky="w", padx=6)
+
+        ttk.Label(opt, text="Jitter (±%):").grid(row=1, column=0, sticky="e")
+        ttk.Spinbox(opt, from_=0.0, to=0.3, increment=0.01, textvariable=self.jitter, width=6).grid(row=1, column=1, padx=4, sticky="w")
+
+        ttk.Label(opt, text="WPM jitter (±):").grid(row=1, column=2, sticky="e")
+        ttk.Spinbox(opt, from_=0.0, to=5.0, increment=0.5, textvariable=self.wpm_jitter, width=6).grid(row=1, column=3, padx=4, sticky="w")
+
+        ttk.Label(opt, text="Tone jitter (±Hz):").grid(row=1, column=4, sticky="e")
+        ttk.Spinbox(opt, from_=0.0, to=300.0, increment=10.0, textvariable=self.tone_jitter, width=7).grid(row=1, column=5, padx=4, sticky="w")
+
+        # Re-anchor & Overspeed settings
+        ra = ttk.LabelFrame(frm, text="Re-anchor / Overspeed Settings")
+        ra.pack(fill="x", padx=4, pady=4)
+
+        ttk.Label(ra, text="Low WPM:").grid(row=0,column=0,sticky="e")
+        ttk.Spinbox(ra, from_=6, to=30, increment=1, textvariable=self.low_wpm, width=6).grid(row=0,column=1,padx=4)
+        ttk.Label(ra, text="High WPM:").grid(row=0,column=2,sticky="e")
+        ttk.Spinbox(ra, from_=20, to=50, increment=1, textvariable=self.high_wpm, width=6).grid(row=0,column=3,padx=4)
+        ttk.Label(ra, text="Block (s):").grid(row=0,column=4,sticky="e")
+        ttk.Spinbox(ra, from_=6, to=30, increment=1, textvariable=self.block_seconds, width=6).grid(row=0,column=5,padx=4)
+
+        ttk.Label(ra, text="Overspeed WPM:").grid(row=0,column=6,sticky="e")
+        ttk.Spinbox(ra, from_=24, to=45, increment=1, textvariable=self.overspeed_wpm, width=6).grid(row=0,column=7,padx=4)
 
         # Copy input (Context & Overspeed)
         copyf = ttk.LabelFrame(frm, text="Copy Input (Context & Overspeed)")
@@ -141,20 +186,46 @@ class App(tk.Tk):
         if self.runner is not None:
             messagebox.showinfo("Busy", "A session is already running. Press Stop first.")
             return
+
+        # Validate pair input
         pair_str = self.active_pair.get().replace(" ", "")
-        try:
-            a, b = pair_str.split(",")
-            a, b = a.strip().upper(), b.strip().upper()
-            assert a in MORSE_MAP and b in MORSE_MAP
-        except Exception:
+        if "," not in pair_str:
             messagebox.showerror("Pair error", "Enter active pair as A,B (e.g., H,5)")
+            return
+
+        parts = pair_str.split(",")
+        if len(parts) != 2:
+            messagebox.showerror("Pair error", "Enter exactly two characters separated by comma (e.g., H,5)")
+            return
+
+        a, b = parts[0].strip().upper(), parts[1].strip().upper()
+        if not a or not b:
+            messagebox.showerror("Pair error", "Both characters must be non-empty")
+            return
+
+        if a not in MORSE_MAP:
+            messagebox.showerror("Pair error", f"Character '{a}' is not valid. Use A-Z or 0-9.")
+            return
+        if b not in MORSE_MAP:
+            messagebox.showerror("Pair error", f"Character '{b}' is not valid. Use A-Z or 0-9.")
+            return
+
+        # Validate audio parameters
+        wpm = self.wpm.get()
+        if wpm <= 0 or wpm > 100:
+            messagebox.showerror("WPM error", "WPM must be between 1 and 100")
+            return
+
+        tone_hz = self.tone.get()
+        if tone_hz < 100 or tone_hz > 2000:
+            messagebox.showerror("Tone error", "Tone frequency must be between 100 and 2000 Hz")
             return
 
         spec = DrillSpec(
             mode=self.mode.get(),
             pair=(a, b),
-            wpm=self.wpm.get(),
-            tone_hz=self.tone.get(),
+            wpm=wpm,
+            tone_hz=tone_hz,
             jitter_pct=self.jitter.get(),
             wpm_jitter=self.wpm_jitter.get(),
             tone_jitter_hz=self.tone_jitter.get(),
@@ -180,7 +251,9 @@ class App(tk.Tk):
     def stop_session(self):
         """Stop the runner and, when appropriate, compute and show metrics."""
         if self.runner:
-            sent_lines = list(self.runner.sent_lines)
+            with self.runner._sent_lines_lock:
+                sent_lines = list(self.runner.sent_lines)
+            pair_str = self.runner.spec.pair  # Get the actual (a,b) tuple
             self.runner.stop()
             self.runner = None
             mode = self.mode.get()
@@ -194,15 +267,16 @@ class App(tk.Tk):
                 total = len(expected)
                 dist = levenshtein(expected, typed_norm) if total>0 else 0
                 acc = (1.0 - dist/max(1,total)) * 100.0
+                pair_normalized = f"{pair_str[0]}{pair_str[1]}"  # "H5" not "H,5"
                 try:
                     files = sorted([f for f in os.listdir(self.log_dir.get()) if f.startswith("session_") and f.endswith(".csv")])
                     if files:
                         last = os.path.join(self.log_dir.get(), files[-1])
                         with open(last, "a", newline="") as f:
                             w = csv.writer(f)
-                            w.writerow(["metrics", mode, ''.join(self.active_pair.get()), "chars_total", total])
-                            w.writerow(["metrics", mode, ''.join(self.active_pair.get()), "levenshtein", dist])
-                            w.writerow(["metrics", mode, ''.join(self.active_pair.get()), "accuracy_pct", f"{acc:.2f}"])
+                            w.writerow(["metrics", mode, pair_normalized, "chars_total", total])
+                            w.writerow(["metrics", mode, pair_normalized, "levenshtein", dist])
+                            w.writerow(["metrics", mode, pair_normalized, "accuracy_pct", f"{acc:.2f}"])
                 except Exception:
                     pass
                 messagebox.showinfo("VBZBreaker — Session Metrics",
@@ -212,6 +286,13 @@ class App(tk.Tk):
                                     f"Levenshtein distance: {dist}\n"
                                     f"Accuracy: {acc:.2f}%")
         self.update_status("Stopped.")
+
+    def _on_closing(self):
+        """Clean up and close the application gracefully."""
+        if self.runner:
+            self.runner.stop()
+            self.runner = None
+        self.destroy()
 
 
 def main():

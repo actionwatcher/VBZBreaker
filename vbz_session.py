@@ -8,18 +8,27 @@ import os
 import csv
 import queue
 import time
-from typing import Optional
+from typing import Optional, List
 
 try:
     import numpy as np
     import sounddevice as sd
-except Exception:
+except (ImportError, ModuleNotFoundError):
     np = None
     sd = None
 
 from vbz_synth import MorseSynth, SynthConfig
 from vbz_drill import DrillSpec
 from vbz_utils import DEFAULT_SAMPLE_RATE
+
+# Audio processing constants
+AUDIO_CHUNK_SIZE = 4096
+AUDIO_QUEUE_MAX_SIZE = 8
+QUEUE_PUT_TIMEOUT = 0.5
+
+# Drill timing constants (in seconds)
+DRILL_DURATION_SECONDS = 120  # 2 minutes
+RAMP_DURATION_SECONDS = 0.005
 
 
 class AudioThread(threading.Thread):
@@ -64,16 +73,17 @@ class SessionRunner(threading.Thread):
         self.log_path = log_path
         self.update_ui_cb = update_ui_cb
         self.stop_flag = threading.Event()
-        self.q_frames: 'queue.Queue' = queue.Queue(maxsize=8)
-        self.sent_lines = []  # ground-truth lines for Context/Overspeed
+        self.q_frames: 'queue.Queue' = queue.Queue(maxsize=AUDIO_QUEUE_MAX_SIZE)
+        self.sent_lines: List[str] = []  # ground-truth lines for Context/Overspeed
+        self._sent_lines_lock = threading.Lock()  # Protect sent_lines from concurrent access
 
     def stop(self):
         """Signal the runner to stop and attempt to unblock the audio thread."""
         self.stop_flag.set()
         try:
             self.q_frames.put(None, timeout=0.1)
-        except Exception:
-            pass
+        except queue.Full:
+            pass  # Queue is full, thread will exit via stop_flag
 
     def _make_synth(self, wpm=None, tone=None, stereo=None) -> MorseSynth:
         """Build a MorseSynth configured for a block of audio.
@@ -104,8 +114,7 @@ class SessionRunner(threading.Thread):
         This method handles queue.Full by retrying with a short timeout so
         the function remains responsive to stop requests.
         """
-        chunk = 4096
-        for i in range(0, len(audio), chunk):
+        for i in range(0, len(audio), AUDIO_CHUNK_SIZE):
             if self.stop_flag.is_set():
                 return
             placed = False
@@ -114,7 +123,7 @@ class SessionRunner(threading.Thread):
                     return
                 try:
                     # small timeout to remain interruptible
-                    self.q_frames.put(audio[i:i+chunk], timeout=0.5)
+                    self.q_frames.put(audio[i:i+AUDIO_CHUNK_SIZE], timeout=QUEUE_PUT_TIMEOUT)
                     placed = True
                 except queue.Full:
                     continue
@@ -146,8 +155,8 @@ class SessionRunner(threading.Thread):
 
             try:
                 self.q_frames.put(None, timeout=0.5)
-            except Exception:
-                pass
+            except queue.Full:
+                pass  # Audio thread will exit naturally
 
     # ---- Drill runners are thin wrappers delegated to synth/drill ----
     def _run_reanchor(self, writer):
@@ -158,7 +167,7 @@ class SessionRunner(threading.Thread):
         from vbz_drill import build_pair_sequences
         a, b = self.spec.pair[0].upper(), self.spec.pair[1].upper()
         pattern = f"{a}{b}" * 8
-        t_end = time.time() + 2 * 60
+        t_end = time.time() + DRILL_DURATION_SECONDS
         self.update_ui_cb("Re-anchor mode:\nListen (or send) alternating A/B at slow↔fast speeds. Focus on FEEL of rhythm (no copying).")
         while not self.stop_flag.is_set() and time.time() < t_end:
             writer.writerow([time.time(), self.spec.mode, a+b, "block", f"{self.spec.low_wpm}wpm"])
@@ -177,12 +186,16 @@ class SessionRunner(threading.Thread):
         lines = build_pair_sequences((a, b), lines=6)
         syn = self._make_synth()
         self.update_ui_cb("Contrast mode:\nCopy short, dense A/B lines at normal speed. Accuracy matters. Stop if you need to replay.")
-        for line in lines * 4:
+        # Repeat lines 4 times without creating copies in memory
+        for _ in range(4):
+            for line in lines:
+                if self.stop_flag.is_set():
+                    break
+                writer.writerow([time.time(), self.spec.mode, a+b, "line", line])
+                self._enqueue_audio(syn.string_audio(line))
+                self._enqueue_audio(syn.string_audio("   "))
             if self.stop_flag.is_set():
                 break
-            writer.writerow([time.time(), self.spec.mode, a+b, "line", line])
-            self._enqueue_audio(syn.string_audio(line))
-            self._enqueue_audio(syn.string_audio("   "))
 
     def _run_context(self, writer):
         """Run the context drill: play call-like context lines and record ground truth."""
@@ -191,13 +204,18 @@ class SessionRunner(threading.Thread):
         lines = build_context_lines((a, b), lines=6)
         syn = self._make_synth(stereo=False)
         self.update_ui_cb("Context mode:\nCopy what you hear into the input box below (no punctuation). Compare will run on Stop.")
-        for line in lines * 4:
+        # Repeat lines 4 times without creating copies in memory
+        for _ in range(4):
+            for line in lines:
+                if self.stop_flag.is_set():
+                    break
+                with self._sent_lines_lock:
+                    self.sent_lines.append(line)
+                writer.writerow([time.time(), self.spec.mode, a+b, "ctx", line])
+                self._enqueue_audio(syn.string_audio(line))
+                self._enqueue_audio(syn.string_audio("   "))
             if self.stop_flag.is_set():
                 break
-            self.sent_lines.append(line)
-            writer.writerow([time.time(), self.spec.mode, a+b, "ctx", line])
-            self._enqueue_audio(syn.string_audio(line))
-            self._enqueue_audio(syn.string_audio("   "))
 
     def _run_overspeed(self, writer):
         """Run the overspeed drill: continuous short, high-WPM bursts."""
@@ -205,12 +223,13 @@ class SessionRunner(threading.Thread):
         a, b = self.spec.pair[0].upper(), self.spec.pair[1].upper()
         syn = self._make_synth(wpm=self.spec.overspeed_wpm, stereo=False)
         pattern_lines = build_pair_sequences((a, b), lines=6)
-        t_end = time.time() + 2 * 60
+        t_end = time.time() + DRILL_DURATION_SECONDS
         self.update_ui_cb("Overspeed mode:\nShort high-WPM burst. Copy into the input box below; scoring runs on Stop.")
         i = 0
         while not self.stop_flag.is_set() and time.time() < t_end:
             line = pattern_lines[i % len(pattern_lines)]
-            self.sent_lines.append(line)
+            with self._sent_lines_lock:
+                self.sent_lines.append(line)
             writer.writerow([time.time(), self.spec.mode, a+b, "overspeed_line", line])
             self._enqueue_audio(syn.string_audio(line))
             self._enqueue_audio(syn.string_audio("   "))
