@@ -71,11 +71,10 @@ class ReanchorTab(DrillTab):
         self.tone = tk.DoubleVar(value=650.0)
         self.jitter = tk.DoubleVar(value=0.10)
         self.tone_jitter = tk.DoubleVar(value=0.0)
-        self.stereo = tk.BooleanVar(value=True)
         self.sep_pct = tk.DoubleVar(value=1.0)
-        self.low_wpm = tk.DoubleVar(value=12.0)
-        self.high_wpm = tk.DoubleVar(value=36.0)
-        self.timing_balance = tk.DoubleVar(value=0.0)  # 0=equal chars, 1=equal time
+        self.low_wpm = tk.DoubleVar(value=14.0)
+        self.high_wpm = tk.DoubleVar(value=32.0)
+        self.timing_balance = tk.DoubleVar(value=1.0)  # 0=equal chars, 1=equal time
 
         self._build_ui()
 
@@ -110,16 +109,16 @@ class ReanchorTab(DrillTab):
         ttk.Spinbox(audio_frame, from_=0.0, to=300.0, increment=10.0, textvariable=self.tone_jitter, width=7).grid(row=0, column=5, padx=4, pady=4)
 
         # Stereo settings
-        stereo_frame = ttk.LabelFrame(self, text="Stereo Settings")
-        stereo_frame.pack(fill="x", padx=8, pady=4)
+        # stereo_frame = ttk.LabelFrame(self, text="Stereo Separation")
+        # stereo_frame.pack(fill="x", padx=8, pady=4)
 
-        ttk.Checkbutton(stereo_frame, text="Enable Stereo L/R", variable=self.stereo).grid(row=0, column=0, sticky="w", padx=4, pady=4)
-
-        ttk.Label(stereo_frame, text="Separation:").grid(row=0, column=1, sticky="e", padx=4)
-        sep = ttk.Scale(stereo_frame, from_=0.0, to=1.0, orient="horizontal", variable=self.sep_pct)
-        sep.grid(row=0, column=2, padx=4, pady=4, sticky="ew")
-        stereo_frame.columnconfigure(2, weight=1)
-        ttk.Label(stereo_frame, text="0=mono — 1=fully split (snap 0.25)").grid(row=0, column=3, sticky="w", padx=4)
+        sep__row = 1
+        sep_len = 4
+        ttk.Label(audio_frame, text="Separation:").grid(row=sep__row, column=0, sticky="e", padx=4, pady=4)
+        sep = ttk.Scale(audio_frame, from_=0.0, to=1.0, orient="horizontal", variable=self.sep_pct)
+        ttk.Label(audio_frame, text="mono").grid(row=sep__row, column=1, sticky="w", padx=4)
+        sep.grid(row=sep__row, column=2, padx=4, pady=4, columnspan=sep_len, sticky="ew")
+        ttk.Label(audio_frame, text="fully split").grid(row=sep__row, column=sep_len+2, sticky="w", padx=4)
 
         # Snap separation slider to 0.25 steps
         def snap_sep(*_):
@@ -138,22 +137,19 @@ class ReanchorTab(DrillTab):
         ttk.Label(speed_frame, text="High WPM:").grid(row=0, column=2, sticky="e", padx=4, pady=4)
         ttk.Spinbox(speed_frame, from_=20, to=50, increment=1, textvariable=self.high_wpm, width=6).grid(row=0, column=3, padx=4, pady=4)
 
-        # Timing balance control
-        timing_frame = ttk.LabelFrame(self, text="Timing Balance")
-        timing_frame.pack(fill="x", padx=8, pady=4)
+        # Timing balance control (right side of speed settings)
+        ttk.Label(speed_frame, text="Timing Balance:").grid(row=0, column=4, sticky="e", padx=(16, 4), pady=4)
 
-        ttk.Label(timing_frame, text="Balance:").grid(row=0, column=0, sticky="w", padx=4, pady=4)
-
-        timing_slider = ttk.Scale(timing_frame, from_=0.0, to=1.0, orient="horizontal",
-                                   variable=self.timing_balance, length=300)
-        timing_slider.grid(row=0, column=1, padx=4, pady=4, sticky="ew")
-        timing_frame.columnconfigure(1, weight=1)
+        timing_slider = ttk.Scale(speed_frame, from_=0.0, to=1.0, orient="horizontal",
+                                   variable=self.timing_balance, length=200)
+        timing_slider.grid(row=0, column=5, padx=4, pady=4, sticky="ew")
+        speed_frame.columnconfigure(5, weight=1)
 
         # Add labels for the slider positions
-        labels_frame = ttk.Frame(timing_frame)
-        labels_frame.grid(row=1, column=1, sticky="ew", padx=4)
+        labels_frame = ttk.Frame(speed_frame)
+        labels_frame.grid(row=1, column=5, sticky="ew", padx=4)
 
-        ttk.Label(labels_frame, text="Equal Characters", font=('', 8)).pack(side="left")
+        ttk.Label(labels_frame, text="Equal Chars", font=('', 8)).pack(side="left")
         ttk.Label(labels_frame, text="Balanced", font=('', 8)).pack(side="left", expand=True)
         ttk.Label(labels_frame, text="Equal Time", font=('', 8)).pack(side="right")
 
@@ -173,12 +169,6 @@ class ReanchorTab(DrillTab):
                 snapped = 1.0
             self.timing_balance.set(snapped)
         self.timing_balance.trace_add("write", snap_timing)
-
-        # Explanation label
-        explain_frame = ttk.Frame(timing_frame)
-        explain_frame.grid(row=2, column=1, sticky="ew", padx=4, pady=(0, 4))
-        ttk.Label(explain_frame, text="← Same character count at each speed | Same duration at each speed →",
-                  font=('', 8), foreground='gray').pack()
 
         # Control buttons
         btn_frame = ttk.Frame(self)
@@ -215,7 +205,7 @@ class ReanchorTab(DrillTab):
             tone_hz=self.tone.get(),
             jitter_pct=self.jitter.get(),
             tone_jitter_hz=self.tone_jitter.get(),
-            stereo=self.stereo.get(),
+            stereo=(self.sep_pct.get() > 0.0),
             pan_strength=self.sep_pct.get(),
             low_wpm=self.low_wpm.get(),
             high_wpm=self.high_wpm.get(),
@@ -247,7 +237,6 @@ class ContrastTab(DrillTab):
         self.jitter = tk.DoubleVar(value=0.10)
         self.wpm_jitter = tk.DoubleVar(value=0.0)
         self.tone_jitter = tk.DoubleVar(value=0.0)
-        self.stereo = tk.BooleanVar(value=True)
         self.sep_pct = tk.DoubleVar(value=1.0)
 
         self._build_ui()
@@ -282,23 +271,20 @@ class ContrastTab(DrillTab):
         ttk.Label(audio_frame, text="Jitter (±%):").grid(row=0, column=2, sticky="e", padx=4, pady=4)
         ttk.Spinbox(audio_frame, from_=0.0, to=0.3, increment=0.01, textvariable=self.jitter, width=6).grid(row=0, column=3, padx=4, pady=4)
 
-        ttk.Label(audio_frame, text="WPM jitter (±):").grid(row=1, column=0, sticky="e", padx=4, pady=4)
-        ttk.Spinbox(audio_frame, from_=0.0, to=5.0, increment=0.5, textvariable=self.wpm_jitter, width=6).grid(row=1, column=1, padx=4, pady=4)
+        ttk.Label(audio_frame, text="WPM jitter (±):").grid(row=0, column=4, sticky="e", padx=4, pady=4)
+        ttk.Spinbox(audio_frame, from_=0.0, to=5.0, increment=0.5, textvariable=self.wpm_jitter, width=6).grid(row=0, column=5, padx=4, pady=4)
 
-        ttk.Label(audio_frame, text="Tone jitter (±Hz):").grid(row=1, column=2, sticky="e", padx=4, pady=4)
-        ttk.Spinbox(audio_frame, from_=0.0, to=300.0, increment=10.0, textvariable=self.tone_jitter, width=7).grid(row=1, column=3, padx=4, pady=4)
+        ttk.Label(audio_frame, text="Tone jitter (±Hz):").grid(row=0, column=6, sticky="e", padx=4, pady=4)
+        ttk.Spinbox(audio_frame, from_=0.0, to=300.0, increment=10.0, textvariable=self.tone_jitter, width=7).grid(row=0, column=7, padx=4, pady=4)
 
-        # Stereo settings
-        stereo_frame = ttk.LabelFrame(self, text="Stereo Settings")
-        stereo_frame.pack(fill="x", padx=8, pady=4)
-
-        ttk.Checkbutton(stereo_frame, text="Enable Stereo L/R", variable=self.stereo).grid(row=0, column=0, sticky="w", padx=4, pady=4)
-
-        ttk.Label(stereo_frame, text="Separation:").grid(row=0, column=1, sticky="e", padx=4)
-        sep = ttk.Scale(stereo_frame, from_=0.0, to=1.0, orient="horizontal", variable=self.sep_pct)
-        sep.grid(row=0, column=2, padx=4, pady=4, sticky="ew")
-        stereo_frame.columnconfigure(2, weight=1)
-        ttk.Label(stereo_frame, text="0=mono — 1=fully split (snap 0.25)").grid(row=0, column=3, sticky="w", padx=4)
+        # Stereo separation settings (row 1)
+        sep_row = 1
+        sep_len = 4
+        ttk.Label(audio_frame, text="Separation:").grid(row=sep_row, column=0, sticky="e", padx=4, pady=4)
+        sep = ttk.Scale(audio_frame, from_=0.0, to=1.0, orient="horizontal", variable=self.sep_pct)
+        ttk.Label(audio_frame, text="mono").grid(row=sep_row, column=1, sticky="w", padx=4)
+        sep.grid(row=sep_row, column=2, padx=4, pady=4, columnspan=sep_len, sticky="ew")
+        ttk.Label(audio_frame, text="fully split").grid(row=sep_row, column=sep_len+2, sticky="w", padx=4)
 
         # Snap separation slider to 0.25 steps
         def snap_sep(*_):
@@ -347,7 +333,7 @@ class ContrastTab(DrillTab):
             jitter_pct=self.jitter.get(),
             wpm_jitter=self.wpm_jitter.get(),
             tone_jitter_hz=self.tone_jitter.get(),
-            stereo=self.stereo.get(),
+            stereo=(self.sep_pct.get() > 0.0),
             pan_strength=self.sep_pct.get()
         )
 
