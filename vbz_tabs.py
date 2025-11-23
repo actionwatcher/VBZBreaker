@@ -1,7 +1,7 @@
 """Tab classes for VBZBreaker drill modes."""
 import tkinter as tk
 from tkinter import ttk
-from typing import Optional
+from typing import Optional, Dict, Any
 from vbz_drill import DrillSpec
 from vbz_utils import MORSE_MAP
 
@@ -29,6 +29,14 @@ class DrillTab(ttk.Frame):
     def validate_inputs(self) -> Optional[str]:
         """Validate inputs and return error message if invalid, None if valid."""
         return None
+
+    def get_params(self) -> Dict[str, Any]:
+        """Get current parameter values for persistence. Override in subclasses."""
+        return {}
+
+    def set_params(self, params: Dict[str, Any]) -> None:
+        """Restore parameter values from saved config. Override in subclasses."""
+        pass
 
     def _validate_pair(self, pair_var: tk.StringVar) -> Optional[tuple]:
         """Common pair validation. Returns (a, b) tuple or None if invalid."""
@@ -62,12 +70,12 @@ class DrillTab(ttk.Frame):
 class ReanchorTab(DrillTab):
     """Re-anchor drill mode: Listening only, alternating slow/fast blocks."""
 
-    def __init__(self, parent, app):
+    def __init__(self, parent, app, active_pair: tk.StringVar):
         super().__init__(parent, app)
         self.mode_name = "reanchor"
 
         # Variables
-        self.pair = tk.StringVar(value="H,5")
+        self.pair = active_pair
         self.tone = tk.DoubleVar(value=650.0)
         self.jitter = tk.DoubleVar(value=0.10)
         self.tone_jitter = tk.DoubleVar(value=0.0)
@@ -222,16 +230,45 @@ class ReanchorTab(DrillTab):
         self.stop_btn.config(state="disabled")
         self.status_label.config(text="Session stopped.")
 
+    def get_params(self) -> Dict[str, Any]:
+        """Get current parameter values for persistence."""
+        return {
+            'tone': self.tone.get(),
+            'jitter': self.jitter.get(),
+            'tone_jitter': self.tone_jitter.get(),
+            'sep_pct': self.sep_pct.get(),
+            'low_wpm': self.low_wpm.get(),
+            'high_wpm': self.high_wpm.get(),
+            'timing_balance': self.timing_balance.get()
+        }
+
+    def set_params(self, params: Dict[str, Any]) -> None:
+        """Restore parameter values from saved config."""
+        if 'tone' in params:
+            self.tone.set(params['tone'])
+        if 'jitter' in params:
+            self.jitter.set(params['jitter'])
+        if 'tone_jitter' in params:
+            self.tone_jitter.set(params['tone_jitter'])
+        if 'sep_pct' in params:
+            self.sep_pct.set(params['sep_pct'])
+        if 'low_wpm' in params:
+            self.low_wpm.set(params['low_wpm'])
+        if 'high_wpm' in params:
+            self.high_wpm.set(params['high_wpm'])
+        if 'timing_balance' in params:
+            self.timing_balance.set(params['timing_balance'])
+
 
 class ContrastTab(DrillTab):
     """Contrast drill mode: Listening only, copy dense A/B lines."""
 
-    def __init__(self, parent, app):
+    def __init__(self, parent, app, active_pair: tk.StringVar):
         super().__init__(parent, app)
         self.mode_name = "contrast"
 
         # Variables
-        self.pair = tk.StringVar(value="H,5")
+        self.pair = active_pair
         self.wpm = tk.DoubleVar(value=25.0)
         self.tone = tk.DoubleVar(value=650.0)
         self.jitter = tk.DoubleVar(value=0.10)
@@ -347,16 +384,42 @@ class ContrastTab(DrillTab):
         self.stop_btn.config(state="disabled")
         self.status_label.config(text="Session stopped.")
 
+    def get_params(self) -> Dict[str, Any]:
+        """Get current parameter values for persistence."""
+        return {
+            'wpm': self.wpm.get(),
+            'tone': self.tone.get(),
+            'jitter': self.jitter.get(),
+            'wpm_jitter': self.wpm_jitter.get(),
+            'tone_jitter': self.tone_jitter.get(),
+            'sep_pct': self.sep_pct.get()
+        }
+
+    def set_params(self, params: Dict[str, Any]) -> None:
+        """Restore parameter values from saved config."""
+        if 'wpm' in params:
+            self.wpm.set(params['wpm'])
+        if 'tone' in params:
+            self.tone.set(params['tone'])
+        if 'jitter' in params:
+            self.jitter.set(params['jitter'])
+        if 'wpm_jitter' in params:
+            self.wpm_jitter.set(params['wpm_jitter'])
+        if 'tone_jitter' in params:
+            self.tone_jitter.set(params['tone_jitter'])
+        if 'sep_pct' in params:
+            self.sep_pct.set(params['sep_pct'])
+
 
 class ContextTab(DrillTab):
     """Context drill mode: Listening + text input for call-like strings."""
 
-    def __init__(self, parent, app):
+    def __init__(self, parent, app, active_pair: tk.StringVar):
         super().__init__(parent, app)
         self.mode_name = "context"
 
         # Variables
-        self.pair = tk.StringVar(value="H,5")
+        self.pair = active_pair
         self.wpm = tk.DoubleVar(value=25.0)
         self.tone = tk.DoubleVar(value=650.0)
 
@@ -440,16 +503,30 @@ class ContextTab(DrillTab):
         self.copy_text.config(state="disabled")
         return self.copy_text.get("1.0", "end")
 
+    def get_params(self) -> Dict[str, Any]:
+        """Get current parameter values for persistence."""
+        return {
+            'wpm': self.wpm.get(),
+            'tone': self.tone.get()
+        }
+
+    def set_params(self, params: Dict[str, Any]) -> None:
+        """Restore parameter values from saved config."""
+        if 'wpm' in params:
+            self.wpm.set(params['wpm'])
+        if 'tone' in params:
+            self.tone.set(params['tone'])
+
 
 class OverspeedTab(DrillTab):
     """Overspeed drill mode: High-speed listening + text input."""
 
-    def __init__(self, parent, app):
+    def __init__(self, parent, app, active_pair: tk.StringVar):
         super().__init__(parent, app)
         self.mode_name = "overspeed"
 
         # Variables
-        self.pair = tk.StringVar(value="H,5")
+        self.pair = active_pair
         self.overspeed_wpm = tk.DoubleVar(value=30.0)
         self.tone = tk.DoubleVar(value=650.0)
 
@@ -533,3 +610,17 @@ class OverspeedTab(DrillTab):
         self.stop_btn.config(state="disabled")
         self.copy_text.config(state="disabled")
         return self.copy_text.get("1.0", "end")
+
+    def get_params(self) -> Dict[str, Any]:
+        """Get current parameter values for persistence."""
+        return {
+            'overspeed_wpm': self.overspeed_wpm.get(),
+            'tone': self.tone.get()
+        }
+
+    def set_params(self, params: Dict[str, Any]) -> None:
+        """Restore parameter values from saved config."""
+        if 'overspeed_wpm' in params:
+            self.overspeed_wpm.set(params['overspeed_wpm'])
+        if 'tone' in params:
+            self.tone.set(params['tone'])

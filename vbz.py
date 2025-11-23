@@ -12,6 +12,7 @@ from typing import Optional
 from vbz_session import SessionRunner
 from vbz_utils import norm_text, levenshtein
 from vbz_tabs import ReanchorTab, ContrastTab, ContextTab, OverspeedTab
+from vbz_config import load_config, save_config
 
 
 def get_default_log_dir() -> str:
@@ -49,6 +50,7 @@ class App(tk.Tk):
         self.log_dir = tk.StringVar(value=get_default_log_dir())
         self.runner: Optional[SessionRunner] = None
         self.active_tab = None
+        self.active_pair = tk.StringVar(value="H,5")  # Global active pair shared across all tabs
 
         self._build_ui()
 
@@ -58,11 +60,11 @@ class App(tk.Tk):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=4, pady=4)
 
-        # Create tabs
-        self.reanchor_tab = ReanchorTab(self.notebook, self)
-        self.contrast_tab = ContrastTab(self.notebook, self)
-        self.context_tab = ContextTab(self.notebook, self)
-        self.overspeed_tab = OverspeedTab(self.notebook, self)
+        # Create tabs with shared active_pair
+        self.reanchor_tab = ReanchorTab(self.notebook, self, self.active_pair)
+        self.contrast_tab = ContrastTab(self.notebook, self, self.active_pair)
+        self.context_tab = ContextTab(self.notebook, self, self.active_pair)
+        self.overspeed_tab = OverspeedTab(self.notebook, self, self.active_pair)
 
         # Add tabs to notebook
         self.notebook.add(self.reanchor_tab, text="Re-anchor")
@@ -72,6 +74,9 @@ class App(tk.Tk):
 
         # Store tab references for easy access
         self.tabs = [self.reanchor_tab, self.contrast_tab, self.context_tab, self.overspeed_tab]
+
+        # Load saved parameters
+        self._load_params()
 
     def update_status(self, msg: str):
         """Helper to update status line from SessionRunner callbacks."""
@@ -90,6 +95,9 @@ class App(tk.Tk):
         if self.runner is not None:
             messagebox.showinfo("Busy", "A session is already running. Press Stop first.")
             return
+
+        # Save current tab parameters before starting
+        self._save_params()
 
         # Validate inputs
         error = tab.validate_inputs()
@@ -184,8 +192,40 @@ class App(tk.Tk):
         self.active_tab = None
         self.update_status("Session stopped.")
 
+    def _load_params(self):
+        """Load saved parameters from config file and restore to tabs."""
+        config = load_config()
+
+        # Load global active pair
+        if 'active_pair' in config:
+            self.active_pair.set(config['active_pair'])
+
+        # Load tab-specific parameters
+        if 'reanchor' in config:
+            self.reanchor_tab.set_params(config['reanchor'])
+        if 'contrast' in config:
+            self.contrast_tab.set_params(config['contrast'])
+        if 'context' in config:
+            self.context_tab.set_params(config['context'])
+        if 'overspeed' in config:
+            self.overspeed_tab.set_params(config['overspeed'])
+
+    def _save_params(self):
+        """Save current parameters from all tabs to config file."""
+        config = {
+            'active_pair': self.active_pair.get(),
+            'reanchor': self.reanchor_tab.get_params(),
+            'contrast': self.contrast_tab.get_params(),
+            'context': self.context_tab.get_params(),
+            'overspeed': self.overspeed_tab.get_params()
+        }
+        save_config(config)
+
     def _on_closing(self):
         """Clean up and close the application gracefully."""
+        # Save parameters before closing
+        self._save_params()
+
         if self.runner:
             self.runner.stop()
             self.runner = None
