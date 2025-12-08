@@ -76,3 +76,4 @@ class DrillSpec:
     block_seconds: float = 12.0
     overspeed_wpm: float = 30.0
     timing_balance: float = 0.0    # 0.0 = equal chars, 1.0 = equal time, 0.5 = balanced
+    swap_channels: bool = False    # Swap left/right audio channels

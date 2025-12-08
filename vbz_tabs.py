@@ -70,12 +70,13 @@ class DrillTab(ttk.Frame):
 class ReanchorTab(DrillTab):
     """Re-anchor drill mode: Listening only, alternating slow/fast blocks."""
 
-    def __init__(self, parent, app, active_pair: tk.StringVar):
+    def __init__(self, parent, app, active_pair: tk.StringVar, swap_lr: tk.BooleanVar):
         super().__init__(parent, app)
         self.mode_name = "reanchor"
 
         # Variables
         self.pair = active_pair
+        self.swap_lr = swap_lr  # Shared across stereo tabs
         self.tone = tk.DoubleVar(value=650.0)
         self.jitter = tk.DoubleVar(value=0.10)
         self.tone_jitter = tk.DoubleVar(value=0.0)
@@ -127,6 +128,7 @@ class ReanchorTab(DrillTab):
         ttk.Label(audio_frame, text="mono").grid(row=sep__row, column=1, sticky="w", padx=4)
         sep.grid(row=sep__row, column=2, padx=4, pady=4, columnspan=sep_len, sticky="ew")
         ttk.Label(audio_frame, text="fully split").grid(row=sep__row, column=sep_len+2, sticky="w", padx=4)
+        ttk.Checkbutton(audio_frame, text="Swap L/R ears", variable=self.swap_lr).grid(row=sep__row, column=sep_len+3, sticky="w", padx=8)
 
         # Snap separation slider to 0.25 steps
         def snap_sep(*_):
@@ -217,7 +219,8 @@ class ReanchorTab(DrillTab):
             pan_strength=self.sep_pct.get(),
             low_wpm=self.low_wpm.get(),
             high_wpm=self.high_wpm.get(),
-            timing_balance=self.timing_balance.get()
+            timing_balance=self.timing_balance.get(),
+            swap_channels=self.swap_lr.get()
         )
 
     def on_session_start(self):
@@ -263,12 +266,13 @@ class ReanchorTab(DrillTab):
 class ContrastTab(DrillTab):
     """Contrast drill mode: Listening only, copy dense A/B lines."""
 
-    def __init__(self, parent, app, active_pair: tk.StringVar):
+    def __init__(self, parent, app, active_pair: tk.StringVar, swap_lr: tk.BooleanVar):
         super().__init__(parent, app)
         self.mode_name = "contrast"
 
         # Variables
         self.pair = active_pair
+        self.swap_lr = swap_lr  # Shared across stereo tabs
         self.wpm = tk.DoubleVar(value=25.0)
         self.tone = tk.DoubleVar(value=650.0)
         self.jitter = tk.DoubleVar(value=0.10)
@@ -322,6 +326,7 @@ class ContrastTab(DrillTab):
         ttk.Label(audio_frame, text="mono").grid(row=sep_row, column=1, sticky="w", padx=4)
         sep.grid(row=sep_row, column=2, padx=4, pady=4, columnspan=sep_len, sticky="ew")
         ttk.Label(audio_frame, text="fully split").grid(row=sep_row, column=sep_len+2, sticky="w", padx=4)
+        ttk.Checkbutton(audio_frame, text="Swap L/R ears", variable=self.swap_lr).grid(row=sep_row, column=sep_len+3, sticky="w", padx=8)
 
         # Snap separation slider to 0.25 steps
         def snap_sep(*_):
@@ -371,7 +376,8 @@ class ContrastTab(DrillTab):
             wpm_jitter=self.wpm_jitter.get(),
             tone_jitter_hz=self.tone_jitter.get(),
             stereo=(self.sep_pct.get() > 0.0),
-            pan_strength=self.sep_pct.get()
+            pan_strength=self.sep_pct.get(),
+            swap_channels=self.swap_lr.get()
         )
 
     def on_session_start(self):

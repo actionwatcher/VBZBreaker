@@ -94,7 +94,10 @@ class SessionRunner(threading.Thread):
         tone_eff = self.spec.tone_hz if tone is None else tone
         allow_stereo = (self.spec.mode in ("reanchor", "contrast"))
         want_stereo = (stereo if stereo is not None else self.spec.stereo)
-        stereo_pair = self.spec.pair if (allow_stereo and want_stereo) else None
+        pair = self.spec.pair
+        if self.spec.swap_channels:
+            pair = (pair[1], pair[0])
+        stereo_pair = pair if (allow_stereo and want_stereo) else None
         cfg = SynthConfig(
             sample_rate=DEFAULT_SAMPLE_RATE,
             tone_hz=tone_eff,
