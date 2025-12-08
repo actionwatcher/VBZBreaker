@@ -29,6 +29,7 @@ class SynthConfig:
     tone_jitter_hz: float = 0.0
     wpm_jitter: float = 0.0
     gain: float = 0.25
+    swap_channels: bool = False
 
 
 class MorseSynth:
@@ -112,7 +113,11 @@ class MorseSynth:
 
         left = (sig * pan[0]).reshape(-1, 1)
         right = (sig * pan[1]).reshape(-1, 1)
-        stereo = np.concatenate([left, right], axis=1)
+        # Swap channels if requested (for left/right ear reversal)
+        if self.cfg.swap_channels:
+            stereo = np.concatenate([right, left], axis=1)
+        else:
+            stereo = np.concatenate([left, right], axis=1)
         return stereo * self.cfg.gain
 
     def _silence(self, seconds: float) -> 'np.ndarray':

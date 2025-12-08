@@ -51,6 +51,7 @@ class App(tk.Tk):
         self.runner: Optional[SessionRunner] = None
         self.active_tab = None
         self.active_pair = tk.StringVar(value="H,5")  # Global active pair shared across all tabs
+        self.swap_lr = tk.BooleanVar(value=False)  # Global L/R swap shared across stereo tabs
 
         self._build_ui()
 
@@ -60,9 +61,9 @@ class App(tk.Tk):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=4, pady=4)
 
-        # Create tabs with shared active_pair
-        self.reanchor_tab = ReanchorTab(self.notebook, self, self.active_pair)
-        self.contrast_tab = ContrastTab(self.notebook, self, self.active_pair)
+        # Create tabs with shared active_pair and swap_lr
+        self.reanchor_tab = ReanchorTab(self.notebook, self, self.active_pair, self.swap_lr)
+        self.contrast_tab = ContrastTab(self.notebook, self, self.active_pair, self.swap_lr)
         self.context_tab = ContextTab(self.notebook, self, self.active_pair)
         self.overspeed_tab = OverspeedTab(self.notebook, self, self.active_pair)
 
@@ -196,9 +197,11 @@ class App(tk.Tk):
         """Load saved parameters from config file and restore to tabs."""
         config = load_config()
 
-        # Load global active pair
+        # Load global settings
         if 'active_pair' in config:
             self.active_pair.set(config['active_pair'])
+        if 'swap_lr' in config:
+            self.swap_lr.set(config['swap_lr'])
 
         # Load tab-specific parameters
         if 'reanchor' in config:
@@ -214,6 +217,7 @@ class App(tk.Tk):
         """Save current parameters from all tabs to config file."""
         config = {
             'active_pair': self.active_pair.get(),
+            'swap_lr': self.swap_lr.get(),
             'reanchor': self.reanchor_tab.get_params(),
             'contrast': self.contrast_tab.get_params(),
             'context': self.context_tab.get_params(),

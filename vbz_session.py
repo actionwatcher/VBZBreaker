@@ -94,10 +94,7 @@ class SessionRunner(threading.Thread):
         tone_eff = self.spec.tone_hz if tone is None else tone
         allow_stereo = (self.spec.mode in ("reanchor", "contrast"))
         want_stereo = (stereo if stereo is not None else self.spec.stereo)
-        pair = self.spec.pair
-        if self.spec.swap_channels:
-            pair = (pair[1], pair[0])
-        stereo_pair = pair if (allow_stereo and want_stereo) else None
+        stereo_pair = self.spec.pair if (allow_stereo and want_stereo) else None
         cfg = SynthConfig(
             sample_rate=DEFAULT_SAMPLE_RATE,
             tone_hz=tone_eff,
@@ -107,7 +104,8 @@ class SessionRunner(threading.Thread):
             pan_strength=self.spec.pan_strength,
             tone_jitter_hz=self.spec.tone_jitter_hz,
             wpm_jitter=self.spec.wpm_jitter,
-            gain=0.25
+            gain=0.25,
+            swap_channels=self.spec.swap_channels
         )
         return MorseSynth(cfg)
 
