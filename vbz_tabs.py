@@ -70,17 +70,17 @@ class DrillTab(ttk.Frame):
 class ReanchorTab(DrillTab):
     """Re-anchor drill mode: Listening only, alternating slow/fast blocks."""
 
-    def __init__(self, parent, app, active_pair: tk.StringVar, swap_lr: tk.BooleanVar):
+    def __init__(self, parent, app, active_pair: tk.StringVar, swap_lr: tk.BooleanVar, sep_pct: tk.DoubleVar):
         super().__init__(parent, app)
         self.mode_name = "reanchor"
 
         # Variables
         self.pair = active_pair
         self.swap_lr = swap_lr  # Shared across stereo tabs
+        self.sep_pct = sep_pct  # Shared across stereo tabs
         self.tone = tk.DoubleVar(value=650.0)
         self.jitter = tk.DoubleVar(value=0.10)
         self.tone_jitter = tk.DoubleVar(value=0.0)
-        self.sep_pct = tk.DoubleVar(value=1.0)
         self.low_wpm = tk.DoubleVar(value=14.0)
         self.high_wpm = tk.DoubleVar(value=32.0)
         self.timing_balance = tk.DoubleVar(value=1.0)  # 0=equal chars, 1=equal time
@@ -239,7 +239,6 @@ class ReanchorTab(DrillTab):
             'tone': self.tone.get(),
             'jitter': self.jitter.get(),
             'tone_jitter': self.tone_jitter.get(),
-            'sep_pct': self.sep_pct.get(),
             'low_wpm': self.low_wpm.get(),
             'high_wpm': self.high_wpm.get(),
             'timing_balance': self.timing_balance.get()
@@ -253,8 +252,6 @@ class ReanchorTab(DrillTab):
             self.jitter.set(params['jitter'])
         if 'tone_jitter' in params:
             self.tone_jitter.set(params['tone_jitter'])
-        if 'sep_pct' in params:
-            self.sep_pct.set(params['sep_pct'])
         if 'low_wpm' in params:
             self.low_wpm.set(params['low_wpm'])
         if 'high_wpm' in params:
@@ -266,19 +263,19 @@ class ReanchorTab(DrillTab):
 class ContrastTab(DrillTab):
     """Contrast drill mode: Listening only, copy dense A/B lines."""
 
-    def __init__(self, parent, app, active_pair: tk.StringVar, swap_lr: tk.BooleanVar):
+    def __init__(self, parent, app, active_pair: tk.StringVar, swap_lr: tk.BooleanVar, sep_pct: tk.DoubleVar):
         super().__init__(parent, app)
         self.mode_name = "contrast"
 
         # Variables
         self.pair = active_pair
         self.swap_lr = swap_lr  # Shared across stereo tabs
+        self.sep_pct = sep_pct  # Shared across stereo tabs
         self.wpm = tk.DoubleVar(value=25.0)
         self.tone = tk.DoubleVar(value=650.0)
         self.jitter = tk.DoubleVar(value=0.10)
         self.wpm_jitter = tk.DoubleVar(value=0.0)
         self.tone_jitter = tk.DoubleVar(value=0.0)
-        self.sep_pct = tk.DoubleVar(value=1.0)
 
         self._build_ui()
 
@@ -397,8 +394,7 @@ class ContrastTab(DrillTab):
             'tone': self.tone.get(),
             'jitter': self.jitter.get(),
             'wpm_jitter': self.wpm_jitter.get(),
-            'tone_jitter': self.tone_jitter.get(),
-            'sep_pct': self.sep_pct.get()
+            'tone_jitter': self.tone_jitter.get()
         }
 
     def set_params(self, params: Dict[str, Any]) -> None:
@@ -413,8 +409,6 @@ class ContrastTab(DrillTab):
             self.wpm_jitter.set(params['wpm_jitter'])
         if 'tone_jitter' in params:
             self.tone_jitter.set(params['tone_jitter'])
-        if 'sep_pct' in params:
-            self.sep_pct.set(params['sep_pct'])
 
 
 class ContextTab(DrillTab):

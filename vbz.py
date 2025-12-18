@@ -52,6 +52,7 @@ class App(tk.Tk):
         self.active_tab = None
         self.active_pair = tk.StringVar(value="H,5")  # Global active pair shared across all tabs
         self.swap_lr = tk.BooleanVar(value=False)  # Global L/R swap shared across stereo tabs
+        self.sep_pct = tk.DoubleVar(value=1.0)  # Global stereo separation shared across stereo tabs
 
         self._build_ui()
 
@@ -61,9 +62,9 @@ class App(tk.Tk):
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill="both", expand=True, padx=4, pady=4)
 
-        # Create tabs with shared active_pair and swap_lr
-        self.reanchor_tab = ReanchorTab(self.notebook, self, self.active_pair, self.swap_lr)
-        self.contrast_tab = ContrastTab(self.notebook, self, self.active_pair, self.swap_lr)
+        # Create tabs with shared active_pair, swap_lr, and sep_pct
+        self.reanchor_tab = ReanchorTab(self.notebook, self, self.active_pair, self.swap_lr, self.sep_pct)
+        self.contrast_tab = ContrastTab(self.notebook, self, self.active_pair, self.swap_lr, self.sep_pct)
         self.context_tab = ContextTab(self.notebook, self, self.active_pair)
         self.overspeed_tab = OverspeedTab(self.notebook, self, self.active_pair)
 
@@ -202,6 +203,8 @@ class App(tk.Tk):
             self.active_pair.set(config['active_pair'])
         if 'swap_lr' in config:
             self.swap_lr.set(config['swap_lr'])
+        if 'sep_pct' in config:
+            self.sep_pct.set(config['sep_pct'])
 
         # Load tab-specific parameters
         if 'reanchor' in config:
@@ -218,6 +221,7 @@ class App(tk.Tk):
         config = {
             'active_pair': self.active_pair.get(),
             'swap_lr': self.swap_lr.get(),
+            'sep_pct': self.sep_pct.get(),
             'reanchor': self.reanchor_tab.get_params(),
             'contrast': self.contrast_tab.get_params(),
             'context': self.context_tab.get_params(),
