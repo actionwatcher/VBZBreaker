@@ -7,12 +7,15 @@ audio/synth logic in vbz_session and vbz_synth.
 import tkinter as tk
 from tkinter import ttk, messagebox
 import os, time, csv, sys
-from typing import Optional
+from typing import TYPE_CHECKING
 
 from vbz_session import SessionRunner
 from vbz_utils import norm_text, levenshtein
 from vbz_tabs import ReanchorTab, ContrastTab, ContextTab, OverspeedTab
 from vbz_config import load_config, save_config
+
+if TYPE_CHECKING:
+    from vbz_tabs import DrillTabProtocol
 
 
 def get_default_log_dir() -> str:
@@ -48,8 +51,8 @@ class App(tk.Tk):
 
         # Application state
         self.log_dir = tk.StringVar(value=get_default_log_dir())
-        self.runner: Optional[SessionRunner] = None
-        self.active_tab = None
+        self.runner: SessionRunner | None = None
+        self.active_tab: DrillTabProtocol | None = None
         self.active_pair = tk.StringVar(value="H,5")  # Global active pair shared across all tabs
         self.swap_lr = tk.BooleanVar(value=False)  # Global L/R swap shared across stereo tabs
         self.sep_pct = tk.DoubleVar(value=1.0)  # Global stereo separation shared across stereo tabs
@@ -63,10 +66,10 @@ class App(tk.Tk):
         self.notebook.pack(fill="both", expand=True, padx=4, pady=4)
 
         # Create tabs with shared active_pair, swap_lr, and sep_pct
-        self.reanchor_tab = ReanchorTab(self.notebook, self, self.active_pair, self.swap_lr, self.sep_pct)
-        self.contrast_tab = ContrastTab(self.notebook, self, self.active_pair, self.swap_lr, self.sep_pct)
-        self.context_tab = ContextTab(self.notebook, self, self.active_pair)
-        self.overspeed_tab = OverspeedTab(self.notebook, self, self.active_pair)
+        self.reanchor_tab = ReanchorTab(self.notebook, self.start_session_from_tab, self.stop_session, self.active_pair, self.swap_lr, self.sep_pct)
+        self.contrast_tab = ContrastTab(self.notebook, self.start_session_from_tab, self.stop_session, self.active_pair, self.swap_lr, self.sep_pct)
+        self.context_tab = ContextTab(self.notebook, self.start_session_from_tab, self.stop_session, self.active_pair)
+        self.overspeed_tab = OverspeedTab(self.notebook, self.start_session_from_tab, self.stop_session, self.active_pair)
 
         # Add tabs to notebook
         self.notebook.add(self.reanchor_tab, text="Re-anchor")

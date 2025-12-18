@@ -1,77 +1,67 @@
 """Tab classes for VBZBreaker drill modes."""
+from __future__ import annotations
 import tkinter as tk
 from tkinter import ttk
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Protocol, runtime_checkable
 from vbz_drill import DrillSpec
 from vbz_utils import MORSE_MAP
 
 
-class DrillTab(ttk.Frame):
-    """Base class for drill mode tabs."""
+# Standalone utility functions for validation
+def validate_pair(pair_var: tk.StringVar) -> tuple[Optional[tuple], Optional[str]]:
+    """Validate pair input. Returns ((a, b), None) or (None, error_message)."""
+    pair_str = pair_var.get().replace(" ", "")
+    if "," not in pair_str:
+        return None, "Enter active pair as A,B (e.g., H,5)"
 
-    def __init__(self, parent, app):
-        super().__init__(parent)
-        self.app = app
-        self.mode_name = ""  # Override in subclasses
+    parts = pair_str.split(",")
+    if len(parts) != 2:
+        return None, "Enter exactly two characters separated by comma"
 
-    def get_drill_spec(self) -> Optional[DrillSpec]:
-        """Build and return DrillSpec from tab's controls. Override in subclasses."""
-        raise NotImplementedError
+    a, b = parts[0].strip().upper(), parts[1].strip().upper()
+    if not a or not b:
+        return None, "Both characters must be non-empty"
 
-    def on_session_start(self):
-        """Called when session starts. Override to disable controls."""
-        pass
+    if a not in MORSE_MAP:
+        return None, f"Character '{a}' is not valid. Use A-Z or 0-9."
+    if b not in MORSE_MAP:
+        return None, f"Character '{b}' is not valid. Use A-Z or 0-9."
 
-    def on_session_stop(self, sent_lines=None):
-        """Called when session stops. Override to re-enable controls and handle results."""
-        pass
-
-    def validate_inputs(self) -> Optional[str]:
-        """Validate inputs and return error message if invalid, None if valid."""
-        return None
-
-    def get_params(self) -> Dict[str, Any]:
-        """Get current parameter values for persistence. Override in subclasses."""
-        return {}
-
-    def set_params(self, params: Dict[str, Any]) -> None:
-        """Restore parameter values from saved config. Override in subclasses."""
-        pass
-
-    def _validate_pair(self, pair_var: tk.StringVar) -> Optional[tuple]:
-        """Common pair validation. Returns (a, b) tuple or None if invalid."""
-        pair_str = pair_var.get().replace(" ", "")
-        if "," not in pair_str:
-            return None, "Enter active pair as A,B (e.g., H,5)"
-
-        parts = pair_str.split(",")
-        if len(parts) != 2:
-            return None, "Enter exactly two characters separated by comma"
-
-        a, b = parts[0].strip().upper(), parts[1].strip().upper()
-        if not a or not b:
-            return None, "Both characters must be non-empty"
-
-        if a not in MORSE_MAP:
-            return None, f"Character '{a}' is not valid. Use A-Z or 0-9."
-        if b not in MORSE_MAP:
-            return None, f"Character '{b}' is not valid. Use A-Z or 0-9."
-
-        return (a, b), None
-
-    def _validate_tone(self, tone_var: tk.DoubleVar) -> Optional[str]:
-        """Common tone validation."""
-        tone_hz = tone_var.get()
-        if tone_hz < 100 or tone_hz > 2000:
-            return "Tone frequency must be between 100 and 2000 Hz"
-        return None
+    return (a, b), None
 
 
-class ReanchorTab(DrillTab):
+def validate_tone(tone_var: tk.DoubleVar) -> Optional[str]:
+    """Validate tone frequency. Returns error message or None if valid."""
+    tone_hz = tone_var.get()
+    if tone_hz < 100 or tone_hz > 2000:
+        return "Tone frequency must be between 100 and 2000 Hz"
+    return None
+
+
+@runtime_checkable
+class DrillTabProtocol(Protocol):
+    """Protocol defining the interface for drill mode tabs.
+
+    Tabs must implement this interface to work with the App.
+    No inheritance required - tabs just need these methods/attributes.
+    """
+    mode_name: str
+
+    def get_drill_spec(self) -> Optional[DrillSpec]: ...
+    def on_session_start(self) -> None: ...
+    def on_session_stop(self, sent_lines=None) -> Optional[str]: ...
+    def validate_inputs(self) -> Optional[str]: ...
+    def get_params(self) -> Dict[str, Any]: ...
+    def set_params(self, params: Dict[str, Any]) -> None: ...
+
+
+class ReanchorTab(ttk.Frame):
     """Re-anchor drill mode: Listening only, alternating slow/fast blocks."""
 
-    def __init__(self, parent, app, active_pair: tk.StringVar, swap_lr: tk.BooleanVar, sep_pct: tk.DoubleVar):
-        super().__init__(parent, app)
+    def __init__(self, parent, start_callback, stop_callback, active_pair: tk.StringVar, swap_lr: tk.BooleanVar, sep_pct: tk.DoubleVar):
+        super().__init__(parent)
+        self.start_callback = start_callback
+        self.stop_callback = stop_callback
         self.mode_name = "reanchor"
 
         # Variables
@@ -183,9 +173,9 @@ class ReanchorTab(DrillTab):
         # Control buttons
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill="x", padx=8, pady=8)
-        self.start_btn = ttk.Button(btn_frame, text="Start Re-anchor", command=lambda: self.app.start_session_from_tab(self))
+        self.start_btn = ttk.Button(btn_frame, text="Start Re-anchor", command=lambda: self.start_callback(self))
         self.start_btn.pack(side="left", padx=4)
-        self.stop_btn = ttk.Button(btn_frame, text="Stop", command=self.app.stop_session, state="disabled")
+        self.stop_btn = ttk.Button(btn_frame, text="Stop", command=self.stop_callback, state="disabled")
         self.stop_btn.pack(side="left", padx=4)
 
         # Status
@@ -195,18 +185,21 @@ class ReanchorTab(DrillTab):
         self.status_label.pack(fill="both", expand=True, padx=8, pady=8)
 
     def validate_inputs(self) -> Optional[str]:
-        pair, err = self._validate_pair(self.pair)
+        pair, err = validate_pair(self.pair)
         if err:
             return err
 
-        err = self._validate_tone(self.tone)
+        err = validate_tone(self.tone)
         if err:
             return err
 
         return None
 
     def get_drill_spec(self) -> Optional[DrillSpec]:
-        pair, _ = self._validate_pair(self.pair)
+        # Trust that validate_inputs() already validated the pair
+        pair_str = self.pair.get().replace(" ", "")
+        parts = pair_str.split(",")
+        pair = (parts[0].strip().upper(), parts[1].strip().upper())
 
         return DrillSpec(
             mode="reanchor",
@@ -260,11 +253,13 @@ class ReanchorTab(DrillTab):
             self.timing_balance.set(params['timing_balance'])
 
 
-class ContrastTab(DrillTab):
+class ContrastTab(ttk.Frame):
     """Contrast drill mode: Listening only, copy dense A/B lines."""
 
-    def __init__(self, parent, app, active_pair: tk.StringVar, swap_lr: tk.BooleanVar, sep_pct: tk.DoubleVar):
-        super().__init__(parent, app)
+    def __init__(self, parent, start_callback, stop_callback, active_pair: tk.StringVar, swap_lr: tk.BooleanVar, sep_pct: tk.DoubleVar):
+        super().__init__(parent)
+        self.start_callback = start_callback
+        self.stop_callback = stop_callback
         self.mode_name = "contrast"
 
         # Variables
@@ -335,9 +330,9 @@ class ContrastTab(DrillTab):
         # Control buttons
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill="x", padx=8, pady=8)
-        self.start_btn = ttk.Button(btn_frame, text="Start Contrast", command=lambda: self.app.start_session_from_tab(self))
+        self.start_btn = ttk.Button(btn_frame, text="Start Contrast", command=lambda: self.start_callback(self))
         self.start_btn.pack(side="left", padx=4)
-        self.stop_btn = ttk.Button(btn_frame, text="Stop", command=self.app.stop_session, state="disabled")
+        self.stop_btn = ttk.Button(btn_frame, text="Stop", command=self.stop_callback, state="disabled")
         self.stop_btn.pack(side="left", padx=4)
 
         # Status
@@ -347,7 +342,7 @@ class ContrastTab(DrillTab):
         self.status_label.pack(fill="both", expand=True, padx=8, pady=8)
 
     def validate_inputs(self) -> Optional[str]:
-        pair, err = self._validate_pair(self.pair)
+        pair, err = validate_pair(self.pair)
         if err:
             return err
 
@@ -355,14 +350,17 @@ class ContrastTab(DrillTab):
         if wpm <= 0 or wpm > 100:
             return "WPM must be between 1 and 100"
 
-        err = self._validate_tone(self.tone)
+        err = validate_tone(self.tone)
         if err:
             return err
 
         return None
 
     def get_drill_spec(self) -> Optional[DrillSpec]:
-        pair, _ = self._validate_pair(self.pair)
+        # Trust that validate_inputs() already validated the pair
+        pair_str = self.pair.get().replace(" ", "")
+        parts = pair_str.split(",")
+        pair = (parts[0].strip().upper(), parts[1].strip().upper())
 
         return DrillSpec(
             mode="contrast",
@@ -411,11 +409,13 @@ class ContrastTab(DrillTab):
             self.tone_jitter.set(params['tone_jitter'])
 
 
-class ContextTab(DrillTab):
+class ContextTab(ttk.Frame):
     """Context drill mode: Listening + text input for call-like strings."""
 
-    def __init__(self, parent, app, active_pair: tk.StringVar):
-        super().__init__(parent, app)
+    def __init__(self, parent, start_callback, stop_callback, active_pair: tk.StringVar):
+        super().__init__(parent)
+        self.start_callback = start_callback
+        self.stop_callback = stop_callback
         self.mode_name = "context"
 
         # Variables
@@ -458,13 +458,13 @@ class ContextTab(DrillTab):
         # Control buttons
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill="x", padx=8, pady=8)
-        self.start_btn = ttk.Button(btn_frame, text="Start Context", command=lambda: self.app.start_session_from_tab(self))
+        self.start_btn = ttk.Button(btn_frame, text="Start Context", command=lambda: self.start_callback(self))
         self.start_btn.pack(side="left", padx=4)
-        self.stop_btn = ttk.Button(btn_frame, text="Stop & Score", command=self.app.stop_session, state="disabled")
+        self.stop_btn = ttk.Button(btn_frame, text="Stop & Score", command=self.stop_callback, state="disabled")
         self.stop_btn.pack(side="left", padx=4)
 
     def validate_inputs(self) -> Optional[str]:
-        pair, err = self._validate_pair(self.pair)
+        pair, err = validate_pair(self.pair)
         if err:
             return err
 
@@ -472,14 +472,14 @@ class ContextTab(DrillTab):
         if wpm <= 0 or wpm > 100:
             return "WPM must be between 1 and 100"
 
-        err = self._validate_tone(self.tone)
+        err = validate_tone(self.tone)
         if err:
             return err
 
         return None
 
     def get_drill_spec(self) -> Optional[DrillSpec]:
-        pair, _ = self._validate_pair(self.pair)
+        pair, _ = validate_pair(self.pair)
 
         return DrillSpec(
             mode="context",
@@ -518,11 +518,13 @@ class ContextTab(DrillTab):
             self.tone.set(params['tone'])
 
 
-class OverspeedTab(DrillTab):
+class OverspeedTab(ttk.Frame):
     """Overspeed drill mode: High-speed listening + text input."""
 
-    def __init__(self, parent, app, active_pair: tk.StringVar):
-        super().__init__(parent, app)
+    def __init__(self, parent, start_callback, stop_callback, active_pair: tk.StringVar):
+        super().__init__(parent)
+        self.start_callback = start_callback
+        self.stop_callback = stop_callback
         self.mode_name = "overspeed"
 
         # Variables
@@ -565,13 +567,13 @@ class OverspeedTab(DrillTab):
         # Control buttons
         btn_frame = ttk.Frame(self)
         btn_frame.pack(fill="x", padx=8, pady=8)
-        self.start_btn = ttk.Button(btn_frame, text="Start Overspeed", command=lambda: self.app.start_session_from_tab(self))
+        self.start_btn = ttk.Button(btn_frame, text="Start Overspeed", command=lambda: self.start_callback(self))
         self.start_btn.pack(side="left", padx=4)
-        self.stop_btn = ttk.Button(btn_frame, text="Stop & Score", command=self.app.stop_session, state="disabled")
+        self.stop_btn = ttk.Button(btn_frame, text="Stop & Score", command=self.stop_callback, state="disabled")
         self.stop_btn.pack(side="left", padx=4)
 
     def validate_inputs(self) -> Optional[str]:
-        pair, err = self._validate_pair(self.pair)
+        pair, err = validate_pair(self.pair)
         if err:
             return err
 
@@ -579,14 +581,14 @@ class OverspeedTab(DrillTab):
         if wpm <= 0 or wpm > 100:
             return "WPM must be between 1 and 100"
 
-        err = self._validate_tone(self.tone)
+        err = validate_tone(self.tone)
         if err:
             return err
 
         return None
 
     def get_drill_spec(self) -> Optional[DrillSpec]:
-        pair, _ = self._validate_pair(self.pair)
+        pair, _ = validate_pair(self.pair)
 
         return DrillSpec(
             mode="overspeed",
